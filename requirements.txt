@@ -8,3 +8,4 @@ joblib
 streamlit
 plotly
 scipy
+openpyxl
