@@ -249,18 +249,18 @@ else:
             
             st.success(f"✅ ファイル読み込み成功: {len(df)} 件のデータ")
             
-            # データプレビュー
+# データプレビュー
             st.markdown("### 📊 データプレビュー")
             st.dataframe(df.head(10), use_container_width=True)
             
-            # 列名のマッピング（大文字小文字を無視）
+            # 列名のマッピング（小文字で定義）
             column_mapping = {
                 'age': '年齢',
                 'sex': '性別',
-                'K': 'K（AVG）',
-                'AL': 'AL',
-                'LT': 'LT',
-                'ACD': 'ACD'
+                'k': 'K（AVG）',
+                'al': 'AL',
+                'lt': 'LT',
+                'acd': 'ACD'
             }
             
             # 列名を小文字に変換してチェック
@@ -283,7 +283,7 @@ else:
             
             if missing_columns:
                 st.error(f"❌ 不足している列: {', '.join(missing_columns)}")
-                st.info("必要な列: age, sex, K, AL, LT, ACD")
+                st.info("必要な列: age, sex, K, AL, LT, ACD（大文字小文字は区別しません）")
                 st.stop()
             
             # 予測実行ボタン
