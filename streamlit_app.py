@@ -59,7 +59,7 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     age = st.number_input("年齢", min_value=0, max_value=100, value=50)
-    k_avg = st.number_input("K（AVG）- 角膜曲率", min_value=40.0, max_value=50.0, value=44.0, step=0.1, format="%.2f")
+    k_avg = st.number_input("K（AVG）- 角膜曲率", min_value=40.0, max_value=8.5, value=6.0, step=0.1, format="%.2f")
 
 with col2:
     gender = st.selectbox("性別", [0, 1], format_func=lambda x: "男性" if x == 0 else "女性")
