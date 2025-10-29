@@ -8,8 +8,8 @@ import io
 # ページ設定
 st.set_page_config(page_title="SE_p予測", page_icon="👁️", layout="wide")
 
-st.markdown("# 👁️ SE_p予測システム")
-st.markdown("眼科検査データから**SE_p（球面等価屈折度）**を予測します。")
+st.markdown("# 👁️ SE予測システム")
+st.markdown("眼科検査データから**調節麻痺後の球面等価屈折度**を予測します。")
 
 # モデルの読み込み
 @st.cache_resource
@@ -48,8 +48,8 @@ st.sidebar.header("⚙️ 設定")
 # 予測モード選択
 prediction_mode = st.sidebar.radio(
     "予測モード",
-    ["単一予測", "CSV一括予測"],
-    help="単一の症例または複数症例のCSVファイルを選択"
+    ["単一予測", "ファイル一括予測"],
+    help="単一の症例または複数症例のExcel/CSVファイルを選択"
 )
 
 model_choice = st.sidebar.selectbox(
@@ -67,11 +67,11 @@ if prediction_mode == "単一予測":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        age = st.number_input("年齢", min_value=3, max_value=18, value=9)
-        k_avg = st.number_input("K-AVG (角膜曲率)", min_value=7.0, max_value=8.7, value=7.4, step=0.1, format="%.2f")
+        age = st.number_input("年齢 (age)", min_value=3, max_value=18, value=9)
+        k_avg = st.number_input("K (角膜曲率)", min_value=7.0, max_value=8.7, value=7.4, step=0.1, format="%.2f")
     
     with col2:
-        gender = st.selectbox("性別", [0, 1], format_func=lambda x: "男性" if x == 0 else "女性")
+        gender = st.selectbox("性別 (sex)", [0, 1], format_func=lambda x: "男性" if x == 0 else "女性")
         al = st.number_input("AL (眼軸長)", min_value=20.0, max_value=30.0, value=24.0, step=0.1, format="%.2f")
     
     with col3:
@@ -160,7 +160,15 @@ if prediction_mode == "単一予測":
                         st.write(f"• {warning}")
                 
                 with st.expander("📋 入力データの確認"):
-                    st.dataframe(pd.DataFrame([user_input]).T, use_container_width=True)
+                    display_input = {
+                        'age': age,
+                        'sex': gender,
+                        'K': k_avg,
+                        'AL': al,
+                        'LT': lt,
+                        'ACD': acd
+                    }
+                    st.dataframe(pd.DataFrame([display_input]).T, use_container_width=True)
                 
             except Exception as e:
                 st.error(f"❌ 予測エラー: {e}")
@@ -168,18 +176,18 @@ if prediction_mode == "単一予測":
                 st.code(traceback.format_exc())
 
 # ========================================
-# CSV一括予測モード
+# ファイル一括予測モード
 # ========================================
 else:
-    st.markdown("## 📤 CSVファイルをアップロード")
+    st.markdown("## 📤 Excel/CSVファイルをアップロード")
     
-    # CSVテンプレートのダウンロード
-    st.markdown("### 📋 CSVフォーマット")
+    # テンプレートのダウンロード
+    st.markdown("### 📋 ファイルフォーマット")
     
     template_data = {
-        '年齢': [9, 10, 8],
-        '性別': [0, 1, 0],
-        'K（AVG）': [7.4, 7.6, 7.2],
+        'age': [9, 10, 8],
+        'sex': [0, 1, 0],
+        'K': [7.4, 7.6, 7.2],
         'AL': [24.0, 24.5, 23.8],
         'LT': [4.0, 4.2, 3.9],
         'ACD': [3.0, 3.1, 2.9]
@@ -189,28 +197,55 @@ else:
     st.write("**必要な列:**")
     st.dataframe(template_df, use_container_width=True)
     
-    # テンプレートダウンロード
-    csv_template = template_df.to_csv(index=False, encoding='utf-8-sig')
-    st.download_button(
-        label="📥 テンプレートをダウンロード",
-        data=csv_template,
-        file_name="se_prediction_template.csv",
-        mime="text/csv"
-    )
+    col1, col2 = st.columns(2)
+    
+    # CSVテンプレートダウンロード
+    with col1:
+        csv_template = template_df.to_csv(index=False, encoding='utf-8-sig')
+        st.download_button(
+            label="📥 CSVテンプレートをダウンロード",
+            data=csv_template,
+            file_name="se_prediction_template.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    
+    # Excelテンプレートダウンロード
+    with col2:
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            template_df.to_excel(writer, index=False, sheet_name='データ')
+        excel_template = excel_buffer.getvalue()
+        
+        st.download_button(
+            label="📥 Excelテンプレートをダウンロード",
+            data=excel_template,
+            file_name="se_prediction_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
     
     st.markdown("---")
     
     # ファイルアップロード
     uploaded_file = st.file_uploader(
-        "CSVファイルを選択",
-        type=['csv'],
-        help="上記のフォーマットに従ったCSVファイルをアップロードしてください"
+        "Excel または CSV ファイルを選択",
+        type=['csv', 'xlsx', 'xls'],
+        help="上記のフォーマットに従ったファイルをアップロードしてください"
     )
     
     if uploaded_file is not None:
         try:
-            # CSVの読み込み
-            df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+            # ファイルの種類に応じて読み込み
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            
+            if file_extension == 'csv':
+                df = pd.read_csv(uploaded_file, encoding='utf-8-sig')
+            elif file_extension in ['xlsx', 'xls']:
+                df = pd.read_excel(uploaded_file)
+            else:
+                st.error("サポートされていないファイル形式です")
+                st.stop()
             
             st.success(f"✅ ファイル読み込み成功: {len(df)} 件のデータ")
             
@@ -218,12 +253,37 @@ else:
             st.markdown("### 📊 データプレビュー")
             st.dataframe(df.head(10), use_container_width=True)
             
-            # 必要な列のチェック
-            required_columns = ['年齢', '性別', 'K（AVG）', 'AL', 'LT', 'ACD']
-            missing_columns = [col for col in required_columns if col not in df.columns]
+            # 列名のマッピング（大文字小文字を無視）
+            column_mapping = {
+                'age': '年齢',
+                'sex': '性別',
+                'K': 'K（AVG）',
+                'AL': 'AL',
+                'LT': 'LT',
+                'ACD': 'ACD'
+            }
+            
+            # 列名を小文字に変換してチェック
+            df_columns_lower = {col.lower(): col for col in df.columns}
+            
+            # 必要な列のチェックと変換
+            required_columns = ['age', 'sex', 'k', 'al', 'lt', 'acd']
+            missing_columns = []
+            renamed_df = df.copy()
+            
+            for req_col in required_columns:
+                if req_col not in df_columns_lower:
+                    missing_columns.append(req_col)
+                else:
+                    # 元の列名を取得
+                    original_col = df_columns_lower[req_col]
+                    # 内部用の列名に変換
+                    internal_col = column_mapping[req_col]
+                    renamed_df[internal_col] = df[original_col]
             
             if missing_columns:
                 st.error(f"❌ 不足している列: {', '.join(missing_columns)}")
+                st.info("必要な列: age, sex, K, AL, LT, ACD")
                 st.stop()
             
             # 予測実行ボタン
@@ -244,8 +304,8 @@ else:
                         
                         progress_bar = st.progress(0)
                         
-                        for idx, row in df.iterrows():
-                            # 入力データの準備
+                        for idx, row in renamed_df.iterrows():
+                            # 入力データの準備（内部用の列名）
                             input_data = {
                                 '年齢': row['年齢'],
                                 '性別': row['性別'],
@@ -271,11 +331,11 @@ else:
                         
                         progress_bar.empty()
                         
-                        # 結果をデータフレームに追加
+                        # 結果を元のデータフレームに追加
                         result_df = df.copy()
-                        result_df['SE_p予測値'] = predictions
-                        result_df['95%CI_下限'] = lower_bounds
-                        result_df['95%CI_上限'] = upper_bounds
+                        result_df['SE_p_predicted'] = predictions
+                        result_df['CI_95_lower'] = lower_bounds
+                        result_df['CI_95_upper'] = upper_bounds
                         
                         st.success("✅ 予測完了！")
                         
@@ -308,9 +368,16 @@ else:
                         
                         # 散布図
                         st.markdown("### 📊 特徴量との関係")
+                        
+                        # 元のファイルの列名を使用
+                        available_features = []
+                        for req_col in required_columns:
+                            if req_col in df_columns_lower:
+                                available_features.append(df_columns_lower[req_col])
+                        
                         feature_choice = st.selectbox(
                             "表示する特徴量を選択",
-                            ['年齢', 'K（AVG）', 'AL', 'LT', 'ACD']
+                            available_features
                         )
                         
                         fig2 = px.scatter(
@@ -331,27 +398,33 @@ else:
                         # 結果のダウンロード
                         st.markdown("### 💾 結果のダウンロード")
                         
+                        col1, col2 = st.columns(2)
+                        
                         # CSV形式
-                        csv_result = result_df.to_csv(index=False, encoding='utf-8-sig')
-                        st.download_button(
-                            label="📥 予測結果をCSVでダウンロード",
-                            data=csv_result,
-                            file_name=f"se_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                            mime="text/csv"
-                        )
+                        with col1:
+                            csv_result = result_df.to_csv(index=False, encoding='utf-8-sig')
+                            st.download_button(
+                                label="📥 CSVでダウンロード",
+                                data=csv_result,
+                                file_name=f"se_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
                         
                         # Excel形式
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            result_df.to_excel(writer, index=False, sheet_name='予測結果')
-                        excel_data = output.getvalue()
-                        
-                        st.download_button(
-                            label="📥 予測結果をExcelでダウンロード",
-                            data=excel_data,
-                            file_name=f"se_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
+                        with col2:
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                result_df.to_excel(writer, index=False, sheet_name='予測結果')
+                            excel_data = output.getvalue()
+                            
+                            st.download_button(
+                                label="📥 Excelでダウンロード",
+                                data=excel_data,
+                                file_name=f"se_predictions_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
                         
                     except Exception as e:
                         st.error(f"❌ 予測エラー: {e}")
@@ -360,7 +433,9 @@ else:
         
         except Exception as e:
             st.error(f"❌ ファイル読み込みエラー: {e}")
-            st.write("CSVファイルのエンコーディングや形式を確認してください。")
+            st.write("ファイルの形式を確認してください。")
+            import traceback
+            st.code(traceback.format_exc())
 
 # フッター
 st.markdown("---")
@@ -375,13 +450,22 @@ with st.expander("ℹ️ モデル情報"):
     | **Extra Trees** | 0.9145 ± 0.0135 | 0.7846 ± 0.0439 | 0.5766 ± 0.0291 |
     | **CatBoost** | 0.9107 ± 0.0131 | 0.8027 ± 0.0410 | 0.6213 ± 0.0340 |
     
-    ### CSV一括予測の使い方
+    ### ファイル一括予測の使い方
     
-    1. **テンプレートをダウンロード**して、Excelなどで編集
-    2. 必要な列: 年齢、性別、K（AVG）、AL、LT、ACD
-    3. CSVファイルをアップロード
+    1. **テンプレートをダウンロード**（Excel または CSV）
+    2. 必要な列: **age, sex, K, AL, LT, ACD**
+    3. ファイルをアップロード
     4. 「一括予測を実行」をクリック
-    5. 結果をCSVまたはExcelでダウンロード
+    5. 結果をダウンロード
+    
+    ### 列の説明
+    
+    - **age**: 年齢（3～18歳）
+    - **sex**: 性別（0=男性, 1=女性）
+    - **K**: 角膜曲率（7.0～8.7）
+    - **AL**: 眼軸長（mm）
+    - **LT**: 水晶体厚（mm）
+    - **ACD**: 前房深度（mm）
     """)
 
 st.sidebar.markdown("---")
