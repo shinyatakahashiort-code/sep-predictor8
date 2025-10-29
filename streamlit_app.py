@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
+import plotly.figure_factory as ff
 import io
 
 # ページ設定
@@ -249,7 +250,7 @@ else:
             
             st.success(f"✅ ファイル読み込み成功: {len(df)} 件のデータ")
             
-# データプレビュー
+            # データプレビュー
             st.markdown("### 📊 データプレビュー")
             st.dataframe(df.head(10), use_container_width=True)
             
@@ -286,7 +287,7 @@ else:
                 st.info("必要な列: age, sex, K, AL, LT, ACD（大文字小文字は区別しません）")
                 st.stop()
             
-# 予測実行ボタン
+            # 予測実行ボタン
             if st.button("🔮 一括予測を実行", type="primary", use_container_width=True):
                 with st.spinner(f"{len(df)} 件のデータを予測中..."):
                     try:
@@ -417,7 +418,6 @@ else:
                             
                             corr_matrix = correlation_df.corr()
                             
-                            import plotly.figure_factory as ff
                             fig_corr = ff.create_annotated_heatmap(
                                 z=corr_matrix.values,
                                 x=list(corr_matrix.columns),
@@ -549,6 +549,12 @@ else:
                         st.error(f"❌ 予測エラー: {e}")
                         import traceback
                         st.code(traceback.format_exc())
+        
+        except Exception as e:
+            st.error(f"❌ ファイル読み込みエラー: {e}")
+            st.write("ファイルの形式を確認してください。")
+            import traceback
+            st.code(traceback.format_exc())
 
 # フッター
 st.markdown("---")
