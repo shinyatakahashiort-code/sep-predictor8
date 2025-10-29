@@ -286,21 +286,29 @@ else:
                 st.info("必要な列: age, sex, K, AL, LT, ACD（大文字小文字は区別しません）")
                 st.stop()
             
-            # 予測実行ボタン
+# 予測実行ボタン
             if st.button("🔮 一括予測を実行", type="primary", use_container_width=True):
                 with st.spinner(f"{len(df)} 件のデータを予測中..."):
                     try:
                         # 選択したモデルを取得
                         if model_choice == 'Ensemble（推奨）':
                             model = models['Ensemble']
+                            is_ensemble = True
                         else:
                             model = models[model_choice]
+                            is_ensemble = False
                         
                         # 各行を予測
                         predictions = []
                         lower_bounds = []
                         upper_bounds = []
                         warnings_list = []
+                        
+                        # アンサンブルの場合、各モデルの予測値も保存
+                        if is_ensemble:
+                            mlp_predictions = []
+                            extratrees_predictions = []
+                            catboost_predictions = []
                         
                         progress_bar = st.progress(0)
                         
@@ -322,6 +330,12 @@ else:
                             lower_bounds.append(result['confidence_interval_95']['lower'])
                             upper_bounds.append(result['confidence_interval_95']['upper'])
                             
+                            # アンサンブルの場合、各モデルの予測値を保存
+                            if is_ensemble:
+                                mlp_predictions.append(result['individual_predictions']['MLP'])
+                                extratrees_predictions.append(result['individual_predictions']['ExtraTrees'])
+                                catboost_predictions.append(result['individual_predictions']['CatBoost'])
+                            
                             # 警告を収集
                             if result['validation']['warnings']:
                                 warnings_list.append(f"行{idx+1}: " + "; ".join(result['validation']['warnings']))
@@ -336,6 +350,12 @@ else:
                         result_df['SE_p_predicted'] = predictions
                         result_df['CI_95_lower'] = lower_bounds
                         result_df['CI_95_upper'] = upper_bounds
+                        
+                        # アンサンブルの場合、各モデルの予測値も追加
+                        if is_ensemble:
+                            result_df['MLP_prediction'] = mlp_predictions
+                            result_df['ExtraTrees_prediction'] = extratrees_predictions
+                            result_df['CatBoost_prediction'] = catboost_predictions
                         
                         st.success("✅ 予測完了！")
                         
@@ -356,15 +376,88 @@ else:
                         with col4:
                             st.metric("最大値", f"{np.max(predictions):.4f}")
                         
+                        # アンサンブル使用時の追加統計
+                        if is_ensemble:
+                            st.markdown("### 📊 各モデルの統計")
+                            
+                            model_stats = pd.DataFrame({
+                                'モデル': ['MLP', 'ExtraTrees', 'CatBoost'],
+                                '平均予測値': [
+                                    f"{np.mean(mlp_predictions):.4f}",
+                                    f"{np.mean(extratrees_predictions):.4f}",
+                                    f"{np.mean(catboost_predictions):.4f}"
+                                ],
+                                '標準偏差': [
+                                    f"{np.std(mlp_predictions):.4f}",
+                                    f"{np.std(extratrees_predictions):.4f}",
+                                    f"{np.std(catboost_predictions):.4f}"
+                                ],
+                                '最小値': [
+                                    f"{np.min(mlp_predictions):.4f}",
+                                    f"{np.min(extratrees_predictions):.4f}",
+                                    f"{np.min(catboost_predictions):.4f}"
+                                ],
+                                '最大値': [
+                                    f"{np.max(mlp_predictions):.4f}",
+                                    f"{np.max(extratrees_predictions):.4f}",
+                                    f"{np.max(catboost_predictions):.4f}"
+                                ]
+                            })
+                            
+                            st.dataframe(model_stats, use_container_width=True)
+                            
+                            # モデル間の相関
+                            st.markdown("### 🔗 モデル間の相関")
+                            
+                            correlation_df = pd.DataFrame({
+                                'MLP': mlp_predictions,
+                                'ExtraTrees': extratrees_predictions,
+                                'CatBoost': catboost_predictions
+                            })
+                            
+                            corr_matrix = correlation_df.corr()
+                            
+                            import plotly.figure_factory as ff
+                            fig_corr = ff.create_annotated_heatmap(
+                                z=corr_matrix.values,
+                                x=list(corr_matrix.columns),
+                                y=list(corr_matrix.index),
+                                annotation_text=corr_matrix.round(3).values,
+                                colorscale='Blues',
+                                showscale=True
+                            )
+                            fig_corr.update_layout(title='各モデルの予測値の相関')
+                            st.plotly_chart(fig_corr, use_container_width=True)
+                        
                         # 予測値の分布
                         st.markdown("### 📊 予測値の分布")
-                        fig = px.histogram(
-                            x=predictions,
-                            nbins=30,
-                            labels={'x': 'SE_p予測値', 'y': '度数'},
-                            title='SE_p予測値のヒストグラム'
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        if is_ensemble:
+                            # アンサンブルと各モデルの分布を比較
+                            fig = px.histogram(
+                                pd.DataFrame({
+                                    'Ensemble': predictions,
+                                    'MLP': mlp_predictions,
+                                    'ExtraTrees': extratrees_predictions,
+                                    'CatBoost': catboost_predictions
+                                }).melt(var_name='モデル', value_name='予測値'),
+                                x='予測値',
+                                color='モデル',
+                                barmode='overlay',
+                                nbins=30,
+                                title='各モデルのSE_p予測値の分布',
+                                opacity=0.7
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            # 単一モデルの分布
+                            fig = px.histogram(
+                                x=predictions,
+                                nbins=30,
+                                labels={'x': 'SE_p予測値', 'y': '度数'},
+                                title='SE_p予測値のヒストグラム'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
                         
                         # 散布図
                         st.markdown("### 📊 特徴量との関係")
@@ -380,14 +473,35 @@ else:
                             available_features
                         )
                         
-                        fig2 = px.scatter(
-                            x=result_df[feature_choice],
-                            y=predictions,
-                            labels={'x': feature_choice, 'y': 'SE_p予測値'},
-                            title=f'{feature_choice} vs SE_p予測値',
-                            trendline="lowess"
-                        )
-                        st.plotly_chart(fig2, use_container_width=True)
+                        if is_ensemble:
+                            # アンサンブルと各モデルの散布図
+                            scatter_df = pd.DataFrame({
+                                feature_choice: list(result_df[feature_choice]) * 4,
+                                '予測値': predictions + mlp_predictions + extratrees_predictions + catboost_predictions,
+                                'モデル': ['Ensemble'] * len(predictions) + 
+                                         ['MLP'] * len(mlp_predictions) + 
+                                         ['ExtraTrees'] * len(extratrees_predictions) + 
+                                         ['CatBoost'] * len(catboost_predictions)
+                            })
+                            
+                            fig2 = px.scatter(
+                                scatter_df,
+                                x=feature_choice,
+                                y='予測値',
+                                color='モデル',
+                                title=f'{feature_choice} vs SE_p予測値（全モデル比較）',
+                                opacity=0.6
+                            )
+                            st.plotly_chart(fig2, use_container_width=True)
+                        else:
+                            # 単一モデルの散布図
+                            fig2 = px.scatter(
+                                x=result_df[feature_choice],
+                                y=predictions,
+                                labels={'x': feature_choice, 'y': 'SE_p予測値'},
+                                title=f'{feature_choice} vs SE_p予測値'
+                            )
+                            st.plotly_chart(fig2, use_container_width=True)
                         
                         # 警告の表示
                         if warnings_list:
@@ -416,6 +530,11 @@ else:
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                                 result_df.to_excel(writer, index=False, sheet_name='予測結果')
+                                
+                                # アンサンブルの場合、統計シートも追加
+                                if is_ensemble:
+                                    model_stats.to_excel(writer, index=False, sheet_name='モデル統計')
+                            
                             excel_data = output.getvalue()
                             
                             st.download_button(
@@ -430,12 +549,6 @@ else:
                         st.error(f"❌ 予測エラー: {e}")
                         import traceback
                         st.code(traceback.format_exc())
-        
-        except Exception as e:
-            st.error(f"❌ ファイル読み込みエラー: {e}")
-            st.write("ファイルの形式を確認してください。")
-            import traceback
-            st.code(traceback.format_exc())
 
 # フッター
 st.markdown("---")
